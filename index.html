@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ポチッとJPEG - かんたん一括画像変換</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- JSZip for batch downloading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap');
+        
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background-color: #fff9f0; /* 柔らかい暖色系 */
+        }
+
+        .drop-zone {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 3px dashed #ffcc80;
+            background: #ffffff;
+        }
+
+        .drop-zone.active {
+            border-color: #ff9800;
+            background-color: #fff3e0;
+            transform: scale(1.02);
+        }
+
+        .custom-shadow {
+            box-shadow: 0 10px 30px -5px rgba(255, 152, 0, 0.1);
+        }
+
+        .magic-icon {
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 152, 0, 0.1);
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border-left-color: #ff9800;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        input[type="range"] {
+            accent-color: #ff9800;
+        }
+
+        .scale-in {
+            animation: scaleIn 0.3s ease-out forwards;
+        }
+
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .item-row {
+            transition: all 0.2s ease;
+        }
+        
+        .item-row:hover {
+            transform: translateX(4px);
+        }
+
+        .filename-input:focus {
+            outline: none;
+            background-color: #fff7ed;
+            border-bottom: 2px solid #ff9800;
+        }
+    </style>
+</head>
+<body class="min-h-screen py-8 px-4">
+    <div class="max-w-3xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-20 h-20 bg-orange-100 rounded-3xl mb-4 shadow-inner magic-icon">
+                <i data-lucide="sparkles" class="w-10 h-10 text-orange-500"></i>
+            </div>
+            <h1 class="text-4xl font-extrabold text-orange-900 mb-2 tracking-tight">
+                ポチッとJPEG
+            </h1>
+            <p class="text-orange-700/70 text-sm font-bold">重たい画像も、いろんな形式も、一瞬で解決！</p>
+        </header>
+
+        <!-- Main Card -->
+        <main class="bg-white rounded-[2.5rem] p-8 md:p-12 custom-shadow border-4 border-orange-50">
+            
+            <!-- Settings -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                <div class="bg-orange-50/50 p-5 rounded-2xl">
+                    <div class="flex justify-between items-center mb-3">
+                        <label class="text-sm font-bold text-orange-900 flex items-center gap-2">
+                            <i data-lucide="award" class="w-4 h-4"></i> きれいさ（画質）
+                        </label>
+                        <span id="qualityValue" class="text-sm font-extrabold text-orange-600">85%</span>
+                    </div>
+                    <input type="range" id="qualityRange" min="10" max="100" value="85" class="w-full h-2 rounded-lg appearance-none cursor-pointer">
+                </div>
+                
+                <div class="bg-orange-50/50 p-5 rounded-2xl">
+                    <div class="flex justify-between items-center mb-3">
+                        <label class="text-sm font-bold text-orange-900 flex items-center gap-2">
+                            <i data-lucide="shrink" class="w-4 h-4"></i> 大きさ（最大幅）
+                        </label>
+                        <span id="resizeValue" class="text-sm font-extrabold text-orange-600">そのまま</span>
+                    </div>
+                    <input type="range" id="resizeRange" min="100" max="4000" step="50" value="4000" class="w-full h-2 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Drag & Drop Area -->
+            <div id="dropZone" class="drop-zone rounded-[2rem] p-10 text-center cursor-pointer mb-10 group hover:shadow-xl transition-all">
+                <input type="file" id="fileInput" class="hidden" multiple accept="image/*">
+                <div class="flex flex-col items-center">
+                    <div class="w-20 h-20 bg-orange-50 text-orange-400 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <i data-lucide="image-plus" class="w-10 h-10"></i>
+                    </div>
+                    <p class="text-xl font-bold text-slate-700 mb-2">ここに画像をポチッと置く</p>
+                    <p class="text-slate-400 text-xs">または画面をどこでもクリック</p>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center mb-4 px-2">
+                <h3 class="text-sm font-bold text-slate-500">変換リスト</h3>
+                <button id="clearAll" class="text-[10px] font-bold text-slate-400 hover:text-red-400 flex items-center gap-1 transition-colors uppercase tracking-widest">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i> リセット
+                </button>
+            </div>
+
+            <!-- Processing List -->
+            <div id="fileList" class="space-y-3 mb-10">
+                <!-- List items will be injected here -->
+            </div>
+
+            <!-- Action Buttons -->
+            <div id="actionArea" class="hidden scale-in">
+                <button id="downloadZip" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-lg py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all shadow-lg shadow-orange-200 active:scale-95">
+                    <i data-lucide="download"></i>
+                    ぜんぶまとめて保存する
+                </button>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="mt-12 text-center text-orange-900/40 text-[10px] font-bold">
+            <p>※あなたの画像はどこにも送信されません。このブラウザの中だけで魔法をかけています。</p>
+            <p class="mt-2 tracking-widest uppercase">Pochitto JPEG © 2024</p>
+        </footer>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileList = document.getElementById('fileList');
+        const actionArea = document.getElementById('actionArea');
+        const qualityRange = document.getElementById('qualityRange');
+        const qualityValue = document.getElementById('qualityValue');
+        const resizeRange = document.getElementById('resizeRange');
+        const resizeValue = document.getElementById('resizeValue');
+        const clearAll = document.getElementById('clearAll');
+        const downloadZip = document.getElementById('downloadZip');
+
+        let queue = []; // Holds information about uploaded files { id, file, originalSize, baseName, resultBlob, resultUrl }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        const reprocessAll = () => {
+            queue.forEach(item => {
+                const element = document.getElementById(item.id);
+                if (element) {
+                    const statusIcon = element.querySelector('.status-icon');
+                    statusIcon.innerHTML = `<div class="spinner"></div>`;
+                    const dlBtn = element.querySelector('.individual-download');
+                    dlBtn.classList.add('hidden');
+                    
+                    convertImage(item.file, item.id, item.baseName, item.originalSize);
+                }
+            });
+        };
+
+        qualityRange.addEventListener('input', (e) => {
+            qualityValue.textContent = `${e.target.value}%`;
+        });
+        qualityRange.addEventListener('change', reprocessAll);
+
+        resizeRange.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            resizeValue.textContent = val >= 4000 ? "そのまま" : `${val} px`;
+        });
+        resizeRange.addEventListener('change', reprocessAll);
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('active');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('active');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('active');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+            actionArea.classList.remove('hidden');
+            for (const file of files) {
+                if (!file.type.startsWith('image/')) continue;
+                addFileToQueue(file);
+            }
+        }
+
+        function addFileToQueue(file) {
+            const fileId = Math.random().toString(36).substr(2, 9);
+            const baseName = file.name.replace(/\.[^/.]+$/, "");
+            const originalSize = file.size;
+
+            // Generate thumbnail for preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const thumbUrl = e.target.result;
+                
+                queue.push({ id: fileId, file, originalSize, baseName, resultBlob: null, resultUrl: null });
+
+                const item = document.createElement('div');
+                item.className = "item-row flex items-center justify-between p-3 bg-white rounded-2xl border-2 border-orange-50 scale-in shadow-sm";
+                item.id = fileId;
+                item.innerHTML = `
+                    <div class="flex items-center gap-3 overflow-hidden flex-1">
+                        <!-- Thumbnail Preview -->
+                        <div class="w-12 h-12 rounded-lg border border-orange-100 flex-shrink-0 overflow-hidden bg-slate-50 flex items-center justify-center">
+                            <img src="${thumbUrl}" class="w-full h-full object-cover">
+                        </div>
+                        <div class="overflow-hidden flex-1">
+                            <!-- Filename Input -->
+                            <div class="flex items-center gap-1 group/name">
+                                <input type="text" value="${baseName}" 
+                                    class="filename-input text-xs font-bold text-slate-700 bg-transparent border-b border-transparent w-full truncate focus:pr-2"
+                                    onchange="updateFileName('${fileId}', this.value)"
+                                    spellcheck="false">
+                                <span class="text-[10px] font-bold text-slate-400">.jpg</span>
+                            </div>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span class="text-[9px] text-slate-300 font-bold uppercase tracking-wider">${formatSize(originalSize)}</span>
+                                <span class="result-size-info flex items-center gap-1 hidden">
+                                    <i data-lucide="arrow-right" class="w-2 h-2 text-orange-300"></i>
+                                    <span class="new-size text-[9px] text-orange-500 font-black">...</span>
+                                    <span class="reduction-tag text-[8px] bg-orange-100 text-orange-600 px-1 rounded font-bold italic"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1 ml-2">
+                        <div class="status-icon mr-1">
+                            <div class="spinner"></div>
+                        </div>
+                        <button class="individual-download hidden p-2 bg-orange-50 rounded-full text-orange-500 hover:bg-orange-500 hover:text-white transition-all">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="removeItem('${fileId}')" class="p-2 text-slate-200 hover:text-red-400 transition-colors">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                `;
+                fileList.appendChild(item);
+                lucide.createIcons();
+                convertImage(file, fileId, baseName, originalSize);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Live filename update
+        window.updateFileName = (id, newBaseName) => {
+            const queueItem = queue.find(q => q.id === id);
+            if (queueItem) {
+                queueItem.baseName = newBaseName;
+                // No need to re-convert, just update the reference for downloading
+            }
+        };
+
+        async function convertImage(file, id, baseName, originalSize) {
+            const quality = parseInt(qualityRange.value) / 100;
+            const maxDimension = parseInt(resizeRange.value);
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (maxDimension < 4000) {
+                        if (width > height) {
+                            if (width > maxDimension) {
+                                height = Math.round(height * (maxDimension / width));
+                                width = maxDimension;
+                            }
+                        } else {
+                            if (height > maxDimension) {
+                                width = Math.round(width * (maxDimension / height));
+                                height = maxDimension;
+                            }
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        const url = URL.createObjectURL(blob);
+                        updateItemComplete(id, url, blob, originalSize);
+                    }, 'image/jpeg', quality);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateItemComplete(id, url, blob, originalSize) {
+            const itemElement = document.getElementById(id);
+            if (!itemElement) return;
+
+            const queueItem = queue.find(q => q.id === id);
+            if (queueItem) {
+                if (queueItem.resultUrl) URL.revokeObjectURL(queueItem.resultUrl);
+                queueItem.resultBlob = blob;
+                queueItem.resultUrl = url;
+            }
+
+            const newSize = blob.size;
+            const reduction = Math.round(((originalSize - newSize) / originalSize) * 100);
+            
+            const infoArea = itemElement.querySelector('.result-size-info');
+            const sizeSpan = itemElement.querySelector('.new-size');
+            const reductionSpan = itemElement.querySelector('.reduction-tag');
+
+            infoArea.classList.remove('hidden');
+            sizeSpan.textContent = formatSize(newSize);
+            
+            if (reduction > 0) {
+                reductionSpan.classList.remove('hidden');
+                reductionSpan.textContent = `-${reduction}%`;
+            } else {
+                reductionSpan.classList.add('hidden');
+            }
+
+            const statusIcon = itemElement.querySelector('.status-icon');
+            statusIcon.innerHTML = `<i data-lucide="check" class="text-green-500 w-5 h-5"></i>`;
+            
+            const dlBtn = itemElement.querySelector('.individual-download');
+            dlBtn.classList.remove('hidden');
+            dlBtn.onclick = (e) => {
+                e.stopPropagation();
+                const currentBaseName = queueItem ? queueItem.baseName : "image";
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentBaseName + ".jpg";
+                a.click();
+            };
+
+            lucide.createIcons();
+        }
+
+        window.removeItem = (id) => {
+            const queueIndex = queue.findIndex(q => q.id === id);
+            if (queueIndex > -1) {
+                if (queue[queueIndex].resultUrl) URL.revokeObjectURL(queue[queueIndex].resultUrl);
+                queue.splice(queueIndex, 1);
+            }
+            const element = document.getElementById(id);
+            if (element) element.remove();
+
+            if (queue.length === 0) {
+                actionArea.classList.add('hidden');
+                fileInput.value = '';
+            }
+        };
+
+        clearAll.addEventListener('click', () => {
+            queue.forEach(q => {
+                if (q.resultUrl) URL.revokeObjectURL(q.resultUrl);
+            });
+            fileList.innerHTML = '';
+            queue = [];
+            actionArea.classList.add('hidden');
+            fileInput.value = '';
+        });
+
+        downloadZip.addEventListener('click', async () => {
+            if (queue.length === 0) return;
+            const zip = new JSZip();
+            queue.forEach(item => {
+                if (item.resultBlob) {
+                    zip.file(item.baseName + ".jpg", item.resultBlob);
+                }
+            });
+            const content = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "pochitto_images.zip";
+            a.click();
+        });
+    </script>
+</body>
+</html>
